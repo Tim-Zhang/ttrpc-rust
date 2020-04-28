@@ -1,5 +1,5 @@
 name: BVT
-on: [push, pull_request]
+on: [push]
 jobs:
   make:
     name: Make
@@ -12,6 +12,7 @@ jobs:
           make deps
           make
   clippy_check:
+    name: Clippy Check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v1

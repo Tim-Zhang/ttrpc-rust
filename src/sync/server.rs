@@ -444,6 +444,8 @@ impl Server {
                         }
                     };
 
+                    info!("ttrpc accept a new client");
+
                     // Non Linux platforms do not support accept4 with SOCK_CLOEXEC flag, so instead
                     // use accept and call fcntl separately to set SOCK_CLOEXEC.
                     // Because of this there is chance of the descriptor leak if fork + exec happens in between.
@@ -467,6 +469,7 @@ impl Server {
                     let child_quit = quit.clone();
                     let reaper_tx_child = reaper_tx.clone();
 
+                    info!("ttrpc accept a new client, before thread spawn");
                     let handler = thread::Builder::new()
                         .name("client_handler".into())
                         .spawn(move || {
@@ -522,6 +525,7 @@ impl Server {
                             debug!("client thread quit");
                         })
                         .unwrap();
+                    info!("ttrpc accept a new client, after thread spawn");
 
                     let mut cns = connections.lock().unwrap();
                     cns.insert(

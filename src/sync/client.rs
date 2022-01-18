@@ -45,7 +45,9 @@ pub struct Client {
 
 impl Client {
     pub fn connect(path: &str) -> Result<Client> {
+        info!("before ttrpc client connect");
         let fd = unsafe { client_connect(path)? };
+        info!("after ttrpc client connect");
         Ok(Self::new(fd))
     }
 
@@ -86,6 +88,7 @@ impl Client {
                     type_: MESSAGE_TYPE_REQUEST,
                     flags: 0,
                 };
+                info!("ttrpc client before write_message");
                 if let Err(e) = write_message(fd, mh, buf) {
                     //Remove current_stream_id and recver_tx to recver_map
                     {
@@ -96,6 +99,7 @@ impl Client {
                         .send(Err(e))
                         .unwrap_or_else(|_e| error!("The request has returned"));
                 }
+                info!("ttrpc client after write_message");
             }
             trace!("Sender quit");
         });

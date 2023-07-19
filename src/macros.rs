@@ -24,3 +24,31 @@ macro_rules! cfg_async {
         )*
     }
 }
+
+#[cfg(all(feature = "async", target_family = "unix"))]
+macro_rules! cfg_send_fd {
+    ($item:block) => {
+        #[cfg(all(feature = "send-fd", target_family="unix"))]
+        $item
+    };
+    ($($item:item)*) => {
+        $(
+            #[cfg(all(feature = "send-fd", target_family="unix"))]
+            $item
+        )*
+    };
+}
+
+#[cfg(all(feature = "async", target_family = "unix"))]
+macro_rules! cfg_not_send_fd {
+    ($item:block) => {
+        #[cfg(not(all(feature = "send-fd", target_family = "unix")))]
+        $item
+    };
+    ($($item:item)*) => {
+        $(
+            #[cfg(not(all(feature = "send-fd", target_family = "unix")))]
+            $item
+        )*
+    };
+}

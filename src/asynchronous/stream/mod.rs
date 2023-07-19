@@ -4,6 +4,10 @@
 // SPDX-License-Identifier: Apache-2.0
 //
 
+cfg_send_fd! {
+    mod sendfd_stream;
+}
+
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -417,6 +421,7 @@ impl StreamSender {
         let msg = GenMessage {
             header,
             payload: buf,
+            ..Default::default()
         };
 
         msg.check()?;
@@ -437,6 +442,7 @@ impl StreamSender {
         let msg = GenMessage {
             header,
             payload: Vec::new(),
+            ..Default::default()
         };
         _send(&self.tx, msg).await?;
         self.local_closed.store(true, Ordering::Relaxed);

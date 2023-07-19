@@ -1,5 +1,6 @@
 #[cfg(feature = "async")]
 mod async_proto;
+
 mod common_proto;
 
 #[cfg(test)]

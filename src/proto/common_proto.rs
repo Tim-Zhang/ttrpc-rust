@@ -148,6 +148,8 @@ impl MessageHeader {
 pub struct GenMessage {
     pub header: MessageHeader,
     pub payload: Vec<u8>,
+    #[cfg(all(feature = "send-fd", target_family = "unix"))]
+    pub fds: Vec<std::os::unix::io::RawFd>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -224,6 +226,7 @@ where
         Ok(Self {
             header: msg.header,
             payload: msg.payload.encode()?,
+            ..Default::default()
         })
     }
 }

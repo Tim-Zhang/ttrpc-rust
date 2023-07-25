@@ -1,9 +1,13 @@
 cfg_send_fd! {
     mod async_sendfd_msg;
+    #[cfg(test)]
+    mod async_normal_msg;
 }
 
 cfg_not_send_fd! {
     mod async_normal_msg;
+    #[cfg(test)]
+    mod async_sendfd_msg;
 }
 
 use super::common_proto::*;

@@ -10,7 +10,20 @@ use tokio::{
 
 impl GenMessage {
     /// Encodes a MessageHeader to writer.
-    pub async fn write_to(&self, mut writer: &mut OwnedWriteHalf) -> TtResult<()> {
+    #[cfg(not(test))]
+    pub async fn write_to(&self, writer: &mut OwnedWriteHalf) -> TtResult<()> {
+        self.write_to_with_fd(writer).await
+    }
+
+    /// Decodes a MessageHeader from reader.
+    #[cfg(not(test))]
+    pub async fn read_from(
+        reader: &mut OwnedReadHalf,
+    ) -> std::result::Result<Self, GenMessageError> {
+        Self::read_from_with_fd(reader).await
+    }
+
+    async fn write_to_with_fd(&self, mut writer: &mut OwnedWriteHalf) -> TtResult<()> {
         self.header
             .write_to(&mut writer)
             .await
@@ -24,14 +37,13 @@ impl GenMessage {
                 .await
                 .map_err(|e| Error::Socket(e.to_string()))?;
         } else {
-            write_to_with_fd(writer, &self.payload, &self.fds)?;
+            do_write_to_with_fd(writer, &self.payload, &self.fds)?;
         }
 
         Ok(())
     }
 
-    /// Decodes a MessageHeader from reader.
-    pub async fn read_from(
+    async fn read_from_with_fd(
         reader: &mut OwnedReadHalf,
     ) -> std::result::Result<Self, GenMessageError> {
         let mut header = MessageHeader::read_from(&mut *reader)
@@ -54,7 +66,7 @@ impl GenMessage {
                 .map_err(|e| Error::Socket(e.to_string()))?;
             (content, Vec::new())
         } else {
-            read_from_with_fd(reader, header.length as usize, fds_len).await?
+            do_read_from_with_fd(reader, header.length as usize, fds_len).await?
         };
 
         Ok(Self {
@@ -65,7 +77,7 @@ impl GenMessage {
     }
 }
 
-async fn read_from_with_fd(
+async fn do_read_from_with_fd(
     reader: &mut OwnedReadHalf,
     cont_len: usize,
     fds_len: usize,
@@ -101,7 +113,7 @@ async fn read_from_with_fd(
     return Ok((content, fds));
 }
 
-fn write_to_with_fd(
+fn do_write_to_with_fd(
     writer: &mut OwnedWriteHalf,
     payload: &Vec<u8>,
     fds: &Vec<RawFd>,

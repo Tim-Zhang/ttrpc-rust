@@ -18,7 +18,7 @@ byteorder = "1.3.2"
 log = "0.4.6"
 simple-logging = "2.0.2"
 nix = "0.23.0"
-ttrpc = { path = "../", features = ["async"] }
+ttrpc = { path = "../", features = ["async", "send-fd"] }
 ctrlc = { version = "3.0", features = ["termination"] }
 tokio = { version = "1.0.1", features = ["signal", "time"] }
 async-trait = "0.1.42"
@@ -48,6 +48,15 @@ path = "./async-stream-server.rs"
 [[example]]
 name = "async-stream-client"
 path = "./async-stream-client.rs"
+
+[[example]]
+name = "sendfd-server"
+path = "./sendfd-server.rs"
+
+[[example]]
+name = "sendfd-client"
+path = "./sendfd-client.rs"
+
 
 [build-dependencies]
 ttrpc-codegen = { path = "../ttrpc-codegen"}

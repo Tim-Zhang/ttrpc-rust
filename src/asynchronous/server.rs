@@ -6,7 +6,6 @@
 
 use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::marker::Unpin;
 use std::os::unix::io::RawFd;
 use std::os::unix::io::{AsRawFd, FromRawFd};
 use std::os::unix::net::UnixListener as SysUnixListener;
@@ -15,23 +14,17 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use async_trait::async_trait;
-use futures::stream::Stream;
-use futures::StreamExt as _;
 use nix::unistd;
 use protobuf::Message as _;
 use tokio::{
     self,
-    io::{AsyncRead, AsyncWrite},
-    net::UnixListener,
+    net::{UnixListener, UnixStream},
     select, spawn,
     sync::mpsc::{channel, Sender},
     task,
     time::timeout,
 };
-#[cfg(any(target_os = "linux", target_os = "android"))]
-use tokio_vsock::VsockListener;
 
-use crate::asynchronous::unix_incoming::UnixIncoming;
 use crate::common::{self, Domain};
 use crate::context;
 use crate::error::{get_status, Error, Result};
@@ -142,41 +135,20 @@ impl Server {
     pub async fn start(&mut self) -> Result<()> {
         let listenfd = self.get_listenfd()?;
 
-        match self.domain.as_ref() {
-            Some(Domain::Unix) => {
-                let sys_unix_listener;
-                unsafe {
-                    sys_unix_listener = SysUnixListener::from_raw_fd(listenfd);
-                }
-                sys_unix_listener
-                    .set_nonblocking(true)
-                    .map_err(err_to_others_err!(e, "set_nonblocking error "))?;
-                let unix_listener = UnixListener::from_std(sys_unix_listener)
-                    .map_err(err_to_others_err!(e, "from_std error "))?;
-
-                let incoming = UnixIncoming::new(unix_listener);
-
-                self.do_start(incoming).await
-            }
-            // It seems that we can use UnixStream to represent both UnixStream and VsockStream.
-            // Whatever, we keep it for now for the compatibility and vsock-specific features maybe
-            // used in the future.
-            #[cfg(any(target_os = "linux", target_os = "android"))]
-            Some(Domain::Vsock) => {
-                let incoming = unsafe { VsockListener::from_raw_fd(listenfd).incoming() };
-                self.do_start(incoming).await
-            }
-            _ => Err(Error::Others(
-                "Domain is not set or not supported".to_string(),
-            )),
+        let sys_unix_listener;
+        unsafe {
+            sys_unix_listener = SysUnixListener::from_raw_fd(listenfd);
         }
+        sys_unix_listener
+            .set_nonblocking(true)
+            .map_err(err_to_others_err!(e, "set_nonblocking error "))?;
+        let unix_listener = UnixListener::from_std(sys_unix_listener)
+            .map_err(err_to_others_err!(e, "from_std error "))?;
+
+        self.do_start(unix_listener).await
     }
 
-    async fn do_start<I, S>(&mut self, mut incoming: I) -> Result<()>
-    where
-        I: Stream<Item = std::io::Result<S>> + Unpin + Send + 'static + AsRawFd,
-        S: AsyncRead + AsyncWrite + AsRawFd + Send + 'static,
-    {
+    async fn do_start(&mut self, unix_listener: UnixListener) -> Result<()> {
         let services = self.services.clone();
 
         let shutdown_waiter = self.shutdown.subscribe();
@@ -187,36 +159,31 @@ impl Server {
         spawn(async move {
             loop {
                 select! {
-                    conn = incoming.next() => {
-                        if let Some(conn) = conn {
-                            // Accept a new connection
-                            match conn {
-                                Ok(conn) => {
-                                    let fd = conn.as_raw_fd();
-                                    // spawn a connection handler, would not block
-                                    spawn_connection_handler(
-                                        fd,
-                                        conn,
-                                        services.clone(),
-                                        shutdown_waiter.clone(),
-                                    ).await;
-                                }
-                                Err(e) => {
-                                    error!("{:?}", e)
-                                }
+                    conn = unix_listener.accept() => {
+                        // Accept a new connection
+                        match conn {
+                            Ok((conn, _addr)) => {
+                                let fd = conn.as_raw_fd();
+                                // spawn a connection handler, would not block
+                                spawn_connection_handler(
+                                    fd,
+                                    conn,
+                                    services.clone(),
+                                    shutdown_waiter.clone(),
+                                ).await;
                             }
-
-                        } else {
-                            break;
+                            Err(e) => {
+                                error!("{:?}", e)
+                            }
                         }
                     }
                     fd_tx = stop_listen_rx.recv() => {
                         if let Some(fd_tx) = fd_tx {
                             // dup fd to keep the listener open
                             // or the listener will be closed when the incoming was dropped.
-                            let dup_fd = unistd::dup(incoming.as_raw_fd()).unwrap();
+                            let dup_fd = unistd::dup(unix_listener.as_raw_fd()).unwrap();
                             common::set_fd_close_exec(dup_fd).unwrap();
-                            drop(incoming);
+                            drop(unix_listener);
 
                             fd_tx.send(dup_fd).await.unwrap();
                             break;
@@ -265,14 +232,12 @@ impl Server {
     }
 }
 
-async fn spawn_connection_handler<C>(
+async fn spawn_connection_handler(
     fd: RawFd,
-    conn: C,
+    conn: UnixStream,
     services: Arc<HashMap<String, Service>>,
     shutdown_waiter: shutdown::Waiter,
-) where
-    C: AsyncRead + AsyncWrite + AsRawFd + Send + 'static,
-{
+) {
     let delegate = ServerBuilder {
         fd,
         services,
@@ -458,6 +423,7 @@ impl HandlerContext {
                         let msg = GenMessage {
                             header,
                             payload: Vec::new(),
+                            ..Default::default()
                         };
 
                         self.tx
@@ -632,6 +598,7 @@ impl HandlerContext {
             let msg = GenMessage {
                 header: MessageHeader::new_data(stream_id, req.payload.len() as u32),
                 payload: req.payload,
+                ..Default::default()
             };
             stream_tx.send(Ok(msg)).await.map_err(|e| {
                 error!("send stream data {} got error {:?}", path, &e);
@@ -650,6 +617,7 @@ impl HandlerContext {
         let msg = GenMessage {
             header: MessageHeader::new_response(stream_id, payload.len() as u32),
             payload,
+            ..Default::default()
         };
         tx.send(msg)
             .await

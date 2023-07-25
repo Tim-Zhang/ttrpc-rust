@@ -8,12 +8,12 @@
 mod client;
 mod server;
 mod stream;
+
 #[macro_use]
 #[doc(hidden)]
 mod utils;
 mod connection;
 pub mod shutdown;
-mod unix_incoming;
 
 pub use self::stream::{
     CSReceiver, CSSender, ClientStream, ClientStreamReceiver, ClientStreamSender, Kind, SSReceiver,

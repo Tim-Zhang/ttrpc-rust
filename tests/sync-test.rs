@@ -35,7 +35,7 @@ fn run_sync_example() -> Result<(), Box<dyn std::error::Error>> {
                     &status.success()
                 );
                 wait_with_output("client", client);
-                client_succeeded = status.success();
+                client_succeeded = false;
                 break;
             }
             Ok(None) => {
